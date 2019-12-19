@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<h1>Pruebas de Web Socket</h1>
+<h2>Reservar nombre</h2>
+<label for="name">Nombre</label>
+<input type="text" id="name" placeholder="Nombre">
+<button id="login">Login</button>
+<hr>
+<h2>Enviar Mensaje Directo</h2>
+<label for="input">Message</label>
+<input type="text" id="input" placeholder="message">
+<label for="To">To</label>
+<input type="text" id="To" placeholder="To">
+<button id="button">Enviar</button>
+<hr>
+<h2>Unirse a una sala</h2>
+<label for="room_name">Room</label>
+<input type="text" id="room_name" placeholder="Room Name">
+<button id="join">Join</button>
+<hr>
+<h2>Notificar a una sala</h2>
+<label for="notify_room">Notify Room</label>
+<input type="text" id="notify_room" placeholder="Notification">
+<label for="notify_content">Content</label>
+<input type="text" id="notify_content" placeholder="Content">
+<button id="send_notification">Enviar</button>
+
+<script>
+    class WsClient {
+        constructor(url, options = {autoConnect: true}) {
+            this.connected = false;
+            this.eventsListener = {};
+            this.url = url;
+            this.options = options;
+            if (this.options.autoConnect) {
+                this.Connect()
+            }
+        }
+
+        Connect() {
+            this.ws = new WebSocket(this.url);
+            this.ws.onmessage = this._messageHandler();
+            this.ws.onopen = this._handlePrimitiveEvent("connect", () => this.connected = true);
+            this.ws.onerror = this._handlePrimitiveEvent("error", (err) => this.LastError = err);
+            this.ws.onclose = this._handlePrimitiveEvent('disconnect', () => {
+                this.connected = false;
+                setTimeout(() => this.Connect(), 300);
+            });
+        }
+
+        _handlePrimitiveEvent(event, cb) {
+            /**
+             * @param {Event} ev
+             */
+            return (ev) => {
+                this._handlerListener({event, data: ev});
+                cb ? cb(ev) : null;
+            }
+        }
+
+        _messageHandler() {
+            return (response) => {
+                try {
+                    let raw = JSON.parse(response.data);
+                    this._handlerListener(raw)
+                } catch (e) {
+                    console.error(e)
+                }
+            }
+        }
+
+        _handlerListener(raw) {
+            if (raw && Boolean(this.eventsListener[raw.event])) {
+                this.eventsListener[raw.event](raw.data)
+            }
+        }
+
+        on(eventName, cb) {
+            this.eventsListener[eventName] = cb;
+            return this
+        }
+
+        emit(event, data) {
+            let eventObj = {event, data};
+            this.ws.send(JSON.stringify(eventObj));
+            return this
+        }
+    }
+
+    const ws = new WsClient('ws://' + window.location.origin.replace(/((http:)|(https):\/\/)/gm, '') + '/ws');
+
+    const login = document.querySelector("#login");
+    login.onclick = () => {
+        const input = document.querySelector("#name");
+        ws.emit("authenticate", {Name: input.value})
+    };
+
+    const join = document.querySelector("#join");
+    join.onclick = () => {
+        const input = document.querySelector("#room_name");
+        ws.emit("join", {Room: input.value})
+    };
+
+    const notificate = document.querySelector("#send_notification");
+    notificate.onclick = () => {
+        const room = document.querySelector("#notify_room");
+        const content = document.querySelector("#notify_content");
+        ws.emit("message:room", {Room: room.value, Content: content.value})
+    };
+
+    const button = document.querySelector("#button");
+    button.onclick = () => {
+        const input = document.querySelector("#input");
+        const To = document.querySelector("#To");
+        ws.emit("message", {Content: input.value, To: To.value})
+    };
+
+    ws.on("message", (data) => {
+        const p = document.createElement('p');
+        p.innerText = `From: ${data.From.Name} | \t To: ${data.To.Name} \t | Content: ${data.Content}`;
+        document.body.append(p);
+    });
+
+    ws.on("message:room", (data) => {
+        const p = document.createElement('p');
+        p.innerText = `Room: ${data.Room} \t | From: ${data.From.Name} \t | Content: ${data.Content}`;
+        document.body.append(p);
+    });
+
+    ws.on('connect', () => {
+        console.log('Conectado!')
+    });
+
+    ws.on('disconnect', () => {
+        console.log('disconnect!')
+    });
+</script>
+</body>
+</html>
